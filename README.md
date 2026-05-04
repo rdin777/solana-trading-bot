@@ -68,7 +68,7 @@ Key modules:
 ## Install
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/muxprotocol/solana-trading-bot.git
 cd solana-trading-bot-master
 npm install
 cp .env.copy .env
