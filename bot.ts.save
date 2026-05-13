@@ -115,7 +115,7 @@ export class Bot {
     const logEveryAttempts = Math.max(1, Math.ceil(30000 / pollMs));
 
     for (;;) {
-      logger.info("[PAPER-TRADING] ATA account verification skipped. Emulating balance...
+      logger.info("[PAPER-TRADING] Проверка ATA аккаунта пропущена. Эмуляция баланса...");
       return true;
       try {
         await getAccount(this.connection, this.config.quoteAta, this.connection.commitment);
@@ -152,7 +152,7 @@ export class Bot {
   }
 
   public async buy(accountId: PublicKey, poolState: LiquidityStateV4) {
-    logger.info({ mint: poolState.baseMint.toString() }, "[PAPER-TRADING] Analysis of the New PoolRaydium...");
+    logger.info({ mint: poolState.baseMint.toString() }, "[PAPER-TRADING] Анализ нового пула Raydium...");
     logger.trace({ mint: poolState.baseMint }, `Processing new pool...`);
 
     if (this.config.useSnipeList && !this.snipeListCache?.isInList(poolState.baseMint.toString())) {
@@ -427,7 +427,6 @@ export class Bot {
       }
     } while (timesChecked < timesToCheck);
 
-
     return false;
   }
 
@@ -437,7 +436,7 @@ export class Bot {
 
   public async buyPumpFun(mint: PublicKey) {
     const mintStr = mint.toString();
-    logger.info({ mint: mintStr }, "[PAPER-TRADING] Analysis of the new token Pump.fun...");
+    logger.info({ mint: mintStr }, "[PAPER-TRADING] Анализ нового токена Pump.fun...");
     if (this.config.useSnipeList && !this.snipeListCache?.isInList(mintStr)) {
       logger.debug({ mint: mintStr }, `Skipping pump.fun buy (not on snipe list)`);
       return;
@@ -455,21 +454,8 @@ export class Bot {
       const bondingCurve = getBondingCurvePDA(mint);
       const associatedBondingCurve = getAssociatedBondingCurve(bondingCurve, mint);
       const associatedUser = getAssociatedTokenAddress(mint, this.config.wallet.publicKey);
-      let info = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          info = await this.connection.getAccountInfo(bondingCurve, this.connection.commitment);
-          break;
-        } catch (err) {
-          if (attempt === 2) throw err;
-          logger.debug({ mint: mintStr, attempt: attempt + 1 }, 'RPC rate limit, retry...');
-          await sleep(200);
-        }
-      }
-      if (!info?.data) {
-        logger.debug({ mint: mintStr }, `Bonding curve not found`);
-        return;
-      }
+  
+       }
       const curve = decodeBondingCurve(info.data);
       if (curve.complete) {
         logger.debug({ mint: mintStr }, `Bonding curve complete, skipping`);
@@ -511,7 +497,7 @@ export class Bot {
             { mint: mintStr },
             `Send pump.fun buy tx attempt: ${i + 1}/${this.config.maxBuyRetries}`,
           );
-          logger.info({ mint: mintStr }, "[PAPER-TRADING] Simulating a successful purchase on Pump.fun!
+          logger.info({ mint: mintStr }, "[PAPER-TRADING] Имитация успешной покупки на Pump.fun!");
           const fakeRawAccount: any = {
             mint: mint,
             amount: expectedTokens,
@@ -520,9 +506,9 @@ export class Bot {
             isNative: false,
             closeAuthority: null
           };
-          // Asynchronously launch the price tracking and selling logic
-          this.sellPumpFun(await associatedUser, fakeRawAccount).catch(err =>
-            logger.error({ mint: mintStr, err }, "Error in Sales Simulation")
+          // Запускаем асинхронно логику отслеживания цены и продажи
+          this.sellPumpFun(await associatedUser, fakeRawAccount).catch(err => 
+            logger.error({ mint: mintStr, err }, "Ошибка в симуляции продажи")
           );
           break;
         } catch (error) {
@@ -539,6 +525,7 @@ export class Bot {
   }
 
   public async sellPumpFun(userAta: PublicKey, rawAccount: RawAccount) {
+    logger.info("[PAPER-TRADING] Имитация успешной продажи на Pump.fun!");
 
     try {
       const mintStr = rawAccount.mint.toString();
@@ -563,12 +550,8 @@ export class Bot {
           if (!curveInfo?.data) break;
           const curve = decodeBondingCurve(curveInfo.data);
           if (curve.complete) {
-          logger.info({ mint: mintStr }, `Send pump.fun sell tx attempt: ${i + 1}/${this.config.maxSellRetries}`);
-
-          // Insert log here, where the transaction is ACTUALLY sent
-          logger.info({ mint: mintStr }, "[PAPER-TRADING] Simulating a Successful Sale on Pump.fun!");
-
-          const result = { confirmed: true, signature: "PAPER_TRADING_SELL_MOCK_SIG", error: null };
+            logger.info({ mint: mintStr }, `Curve graduated to Raydium; skipping pump.fun sell`);
+            break;
           }
 
           const solOut = computeSolOutForTokens(curve, tokensIn);
@@ -694,43 +677,24 @@ export class Bot {
     do {
       try {
         const info = await this.connection.getAccountInfo(bondingCurve, this.connection.commitment);
-        if (!info?.data) {
-          logger.info({ mint: mint.toString() }, `[PAPER-TRADING] The node returned an empty state (or 429), Waiting for the interval...`);
-          await sleep(this.config.priceCheckInterval);
-          continue;
-        }
+        if (!info?.data) { await sleep(this.config.priceCheckInterval); continue; }
         const curve = decodeBondingCurve(info.data);
-        if (curve.complete) {
-          logger.info({ mint: mint.toString() }, "[EXIT] The curve has filled up. (Graduated)!");
-          break;
-        }
+        if (curve.complete) break;
         const solOut = computeSolOutForTokens(curve, tokensIn);
-
-        logger.info(
+        logger.debug(
           { mint: mint.toString() },
-          `[DEBUG-PRICE] [${mint.toString().substring(0,4)}] Iteration: ${timesChecked + 1}/${timesToCheck} | TP: ${takeProfitLamports} | SL: ${stopLossLamports} | Current: ${solOut}`
+          `PumpFun TP: ${takeProfitLamports} | SL: ${stopLossLamports} | Now: ${solOut}`,
         );
-
-        if (solOut <= stopLossLamports) {
-          logger.info({ mint: mint.toString() }, "[EXIT] It worked Stop-Loss!");
-          break;
-        }
-        if (solOut >= takeProfitLamports) {
-          logger.info({ mint: mint.toString() }, "[EXIT] It worked Take-Profit!");
-          break;
-        }
-
-        timesChecked++;
+        if (solOut <= stopLossLamports) break;
+        if (solOut >= takeProfitLamports) break;
         await sleep(this.config.priceCheckInterval);
       } catch (e) {
         logger.trace({ mint: mint.toString(), e }, `pump.fun price check failed`);
         await sleep(this.config.priceCheckInterval);
+      } finally {
+        timesChecked++;
       }
     } while (timesChecked < timesToCheck);
-
-    if (timesChecked >= timesToCheck) {
-      logger.info({ mint: mint.toString() }, "[EXIT] Position hold timeout (Duration) expired!");
-    }
   }
 
   private async priceMatch(amountIn: TokenAmount, poolKeys: LiquidityPoolKeysV4) {
@@ -764,31 +728,26 @@ export class Bot {
           slippage,
         }).amountOut;
 
-        logger.info(
+        logger.debug(
           { mint: poolKeys.baseMint.toString() },
-          `[DEBUG-RAYDIUM] Итерация: ${timesChecked + 1}/${timesToCheck} | TP: ${takeProfit.toFixed()} | SL: ${stopLoss.toFixed()} | Текущая: ${amountOut.toFixed()}`
+          `Take profit: ${takeProfit.toFixed()} | Stop loss: ${stopLoss.toFixed()} | Current: ${amountOut.toFixed()}`,
         );
 
         if (amountOut.lt(stopLoss)) {
-          logger.info({ mint: poolKeys.baseMint.toString() }, "[EXIT] It worked Raydium Stop-Loss!");
           break;
         }
 
         if (amountOut.gt(takeProfit)) {
-          logger.info({ mint: poolKeys.baseMint.toString() }, "[EXIT] It worked Raydium Take-Profit!");
           break;
         }
 
-        timesChecked++;
         await sleep(this.config.priceCheckInterval);
       } catch (e) {
         logger.trace({ mint: poolKeys.baseMint.toString(), e }, `Failed to check token price`);
         await sleep(this.config.priceCheckInterval);
+      } finally {
+        timesChecked++;
       }
     } while (timesChecked < timesToCheck);
-
-    if (timesChecked >= timesToCheck) {
-      logger.info({ mint: poolKeys.baseMint.toString() }, "[EXIT] Raydium Position hold timeout expired!");
-    }
   }
 }
