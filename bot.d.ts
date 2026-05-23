@@ -1,0 +1,66 @@
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { RawAccount } from '@solana/spl-token';
+import { LiquidityStateV4, Token, TokenAmount } from '@raydium-io/raydium-sdk';
+import { MarketCache, PoolCache, PumpFunCache } from './cache';
+import { TransactionExecutor } from './transactions';
+export interface BotConfig {
+    wallet: Keypair;
+    checkRenounced: boolean;
+    checkFreezable: boolean;
+    checkBurned: boolean;
+    minPoolSize: TokenAmount;
+    maxPoolSize: TokenAmount;
+    quoteToken: Token;
+    quoteAmount: TokenAmount;
+    quoteAta: PublicKey;
+    oneTokenAtATime: boolean;
+    useSnipeList: boolean;
+    autoSell: boolean;
+    autoBuyDelay: number;
+    autoSellDelay: number;
+    maxBuyRetries: number;
+    maxSellRetries: number;
+    unitLimit: number;
+    unitPrice: number;
+    takeProfit: number;
+    stopLoss: number;
+    buySlippage: number;
+    sellSlippage: number;
+    priceCheckInterval: number;
+    priceCheckDuration: number;
+    filterCheckInterval: number;
+    filterCheckDuration: number;
+    consecutiveMatchCount: number;
+    pumpFunBuyAmountSol?: number;
+    pumpFunMaxCurveProgress?: number;
+}
+export declare class Bot {
+    private readonly connection;
+    private readonly marketStorage;
+    private readonly poolStorage;
+    private readonly txExecutor;
+    readonly config: BotConfig;
+    private readonly pumpFunStorage;
+    private readonly poolFilters;
+    private readonly snipeListCache?;
+    private readonly mutex;
+    private virtualProfitSol;
+    private sellExecutionCount;
+    readonly isWarp: boolean;
+    readonly isJito: boolean;
+    constructor(connection: Connection, marketStorage: MarketCache, poolStorage: PoolCache, txExecutor: TransactionExecutor, config: BotConfig, pumpFunStorage?: PumpFunCache);
+    validate(): Promise<boolean>;
+    buyPumpFun(mint: PublicKey): Promise<void>;
+    buy(accountId: PublicKey, poolState: LiquidityStateV4): Promise<void>;
+    sell(accountId: PublicKey, rawAccount: RawAccount): Promise<void>;
+    private swap;
+    private filterMatch;
+    isPumpFunMint(mint: string): boolean;
+    sellPumpFun(userAta: PublicKey, rawAccount: RawAccount): Promise<void>;
+    private executePumpFunBuy;
+    private executePumpFunSell;
+    private pumpFunPriceMatch;
+    private priceMatch;
+}
+export declare function validatePumpFunToken(mint: any, curve: any, config: any): Promise<boolean>;
+//# sourceMappingURL=bot.d.ts.map

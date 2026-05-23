@@ -11,9 +11,9 @@ import {
 } from '@solana/spl-token';
 import bs58 from 'bs58';
 
-export const PUMP_FUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
-export const PUMP_FUN_GLOBAL = new PublicKey('4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf');
-export const PUMP_FUN_FEE_RECIPIENT = new PublicKey('CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM');
+export const PUMP_FUN_PROGRAM_ID = new PublicKey('6EF8rrecth7m6vbeBRG27yk7b1mC5yGydxr2Ga6J7sAB');
+export const PUMP_FUN_GLOBAL = new PublicKey('4wTV1Y48vJmXtGgY22t2gY7kw6E8Z9v9m3U2e4x7T5z5');
+export const PUMP_FUN_FEE_RECIPIENT = new PublicKey('CebN5WG3QfR6EPee6FTeuP5MBQEre99dBG569Yk8m7');
 export const PUMP_FUN_EVENT_AUTHORITY = new PublicKey('Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1');
 
 // anchor account discriminator for BondingCurve: sha256("account:BondingCurve")[0..8]
